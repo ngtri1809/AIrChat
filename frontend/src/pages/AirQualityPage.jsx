@@ -1,14 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import AqiCard from '../components/AqiCard';
+import SearchBar from '../components/SearchBar';
+import SearchHistory from '../components/SearchHistory';
+import EmptyState from '../components/EmptyState';
+import Disclaimer from '../components/Disclaimer';
 
 /**
  * Air Quality Page - Real-time AQI monitoring with EPA standards
+ * Features: Enhanced SearchBar, SearchHistory, EmptyState, Disclaimer
  */
 function AirQualityPage() {
-  const [location, setLocation] = useState('');
+  const [searchedLocation, setSearchedLocation] = useState('');
   const [aqiData, setAqiData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [noStations, setNoStations] = useState(false);
 
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3005';
   const SVC_BASE_URL = import.meta.env.VITE_SVC_URL || 'http://localhost:8000';
@@ -32,9 +38,8 @@ function AirQualityPage() {
     return response.json();
   };
 
-  // Handle search
-  const handleSearch = async (e) => {
-    e.preventDefault();
+  // Handle search - called from SearchBar or SearchHistory
+  const handleSearch = async (location) => {
     if (!location.trim()) {
       setError('Please enter a location');
       return;
@@ -43,6 +48,8 @@ function AirQualityPage() {
     setLoading(true);
     setError(null);
     setAqiData(null);
+    setNoStations(false);
+    setSearchedLocation(location);
 
     try {
       // Step 1: Geocode the location
@@ -57,8 +64,13 @@ function AirQualityPage() {
       if (aqData.stations && aqData.stations.length > 0) {
         const station = aqData.stations[0]; // Use first station
         setAqiData(station);
+        
+        // Add to search history on success
+        if (window.addToSearchHistory) {
+          window.addToSearchHistory(location);
+        }
       } else {
-        setError('No air quality stations found near this location');
+        setNoStations(true);
       }
     } catch (err) {
       console.error('Error:', err);
@@ -75,39 +87,26 @@ function AirQualityPage() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-gray-800 dark:text-white mb-2">
-              🌍 Air Quality Monitor
+              🌍 AIrChat Air Quality Monitor
             </h1>
             <p className="text-gray-600 dark:text-gray-300">
               Real-time AQI data with EPA standards and NowCast calculations
             </p>
           </div>
 
-          {/* Search Form */}
-          <form onSubmit={handleSearch} className="mb-8">
-            <div className="flex gap-2 max-w-2xl mx-auto">
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Enter city name (e.g., San Jose, California)"
-                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                disabled={loading}
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-semibold"
-              >
-                {loading ? 'Searching...' : 'Search'}
-              </button>
-            </div>
-          </form>
+          {/* Enhanced Search Bar */}
+          <div className="mb-6">
+            <SearchBar onSearch={handleSearch} loading={loading} />
+          </div>
+
+          {/* Search History */}
+          <SearchHistory onSelectLocation={handleSearch} />
 
           {/* Error Message */}
           {error && (
-            <div className="max-w-2xl mx-auto mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
-              <div className="text-red-800 font-semibold">Error</div>
-              <div className="text-red-600">{error}</div>
+            <div className="max-w-2xl mx-auto mb-6 p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800 rounded-lg">
+              <div className="text-red-800 dark:text-red-300 font-semibold">❌ Error</div>
+              <div className="text-red-600 dark:text-red-400">{error}</div>
             </div>
           )}
 
@@ -119,13 +118,18 @@ function AirQualityPage() {
           )}
 
           {!loading && aqiData && (
-            <div className="flex justify-center">
+            <div className="flex justify-center mb-8">
               <AqiCard aqiData={aqiData} />
             </div>
           )}
 
-          {/* Info Section */}
-          {!loading && !aqiData && !error && (
+          {/* No Stations Found - EmptyState */}
+          {!loading && noStations && (
+            <EmptyState location={searchedLocation} />
+          )}
+
+          {/* Info Section - Show when no search has been made */}
+          {!loading && !aqiData && !error && !noStations && (
             <div className="max-w-2xl mx-auto mt-12">
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
                 <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-4">
@@ -150,6 +154,9 @@ function AirQualityPage() {
               </div>
             </div>
           )}
+
+          {/* Disclaimer - Always show */}
+          <Disclaimer />
         </div>
       </div>
     </div>
