@@ -1,3 +1,152 @@
+# AIrChat 🌍💨
+
+Real-time air quality monitoring web application using EPA standards and OpenAQ data.
+
+**Demo Date:** October 18, 2025
+
+## Tech Stack
+
+- **Frontend:** React + Vite + Tailwind CSS
+- **API Gateway:** Node.js + Express (Geocoding proxy)
+- **Backend Service:** Python + FastAPI (Air quality processing)
+- **Data Sources:** 
+  - OpenAQ API v3 (Air quality data)
+  - Nominatim/OpenStreetMap (Geocoding)
+
+## Key Features
+
+### Minimum Marketable Features (MMF)
+1. ✅ Real-time AQI display with EPA color coding
+2. ✅ Location search with geocoding
+3. ✅ NowCast PM2.5 calculations (EPA formula)
+4. ✅ Multiple pollutant support (PM2.5, PM10, O3, NO2)
+5. ✅ Station selection within radius
+
+### Optional Features
+6. ⏳ Adjustable search radius (5-25km)
+7. ⏳ WHO guideline compliance badges
+8. ⏳ 12-hour trend chart with NowCast
+9. ⏳ Personalized recommendations (sensitive groups)
+10. ⏳ Web Share API integration
+
+## Project Structure
+
+```
+AIrChat/
+├── web/          # React frontend (Vite + Tailwind)
+├── api/          # Express API Gateway (Geocoding proxy)
+├── svc/          # FastAPI backend (Air quality processing)
+└── README.md
+```
+
+## Quick Start
+
+### 1. Frontend (React)
+```bash
+cd web
+npm install
+npm run dev
+# Runs on http://localhost:5173
+```
+
+### 2. API Gateway (Express)
+```bash
+cd api
+npm install
+npm run dev
+# Runs on http://localhost:3000
+```
+
+### 3. Backend Service (FastAPI)
+```bash
+cd svc
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+# Runs on http://localhost:8000
+```
+
+## Day 1 (Oct 11) - Status ✅
+
+### Completed Tasks
+- [x] Initialize React + Vite + Tailwind frontend
+- [x] Create Express API Gateway with geocoding proxy
+- [x] Implement Nominatim throttling (1 req/s)
+- [x] Create FastAPI backend service
+- [x] Integrate OpenAQ API v3
+- [x] GET /api/geocode endpoint
+- [x] GET /v1/aq/latest endpoint (stub data)
+
+### Test Day 1 Acceptance Criteria
+
+**Test Geocoding:**
+```bash
+curl "http://localhost:3000/api/geocode?q=San%20Jose" | jq
+```
+
+**Expected Output:**
+```json
+{
+  "lat": 37.3382,
+  "lon": -121.8863,
+  "display_name": "San Jose, California, United States"
+}
+```
+
+**Test Air Quality Data:**
+```bash
+curl "http://localhost:8000/v1/aq/latest?lat=37.3382&lon=-121.8863&radius=20000" | jq
+```
+
+**Expected Output:**
+```json
+{
+  "lat": 37.3382,
+  "lon": -121.8863,
+  "radius_km": 20.0,
+  "stations_found": 5,
+  "stations": [...],
+  "timestamp": "2025-10-11T...",
+  "note": "Day 1: Stub data - AQI calculations coming in Day 2"
+}
+```
+
+## Standards & References
+
+### AQI Calculation
+- **EPA Appendix G:** 40 CFR Part 58
+- **NowCast Formula:** EPA Technical Assistance Document
+- **Reference:** https://www.ecfr.gov/current/title-40/chapter-I/subchapter-C/part-58/appendix-Appendix%20G%20to%20Part%2058
+
+### WHO Guidelines
+- PM2.5 24-hour: ≤ 15 µg/m³
+- PM2.5 Annual: ≤ 5 µg/m³
+- **Reference:** https://www.who.int/publications/i/item/9789240034228
+
+### API Usage Policies
+- **OpenAQ:** 100 requests/day (free tier)
+- **Nominatim:** 1 request/second max, User-Agent required
+- **Compliance:** Both APIs have strict usage policies - violations result in IP bans
+
+## Development Timeline
+
+- **Day 1 (Oct 11):** ✅ Skeleton & Data Pipeline
+- **Day 2 (Oct 12):** NowCast & AQI Calculation
+- **Day 3 (Oct 13):** Complete MMF
+- **Day 4 (Oct 14):** Optional Features #1 & #2
+- **Day 5 (Oct 15):** Optional Feature #3 (Trend Chart)
+- **Day 6 (Oct 16):** Optional Features #4 & #5
+- **Day 7 (Oct 17):** Polish & Resilience
+- **Day 8 (Oct 18):** Demo Day 🎉
+
+## License
+
+MIT
+
+## Disclaimer
+
+This application is for educational purposes. Air quality data is provided by OpenAQ and should not be used for emergency decision-making. Always consult official sources for health and safety decisions.
 # AIrChat
 
 A production-ready, responsive chat interface with Server-Sent Events (SSE) streaming support, built with React 18 and Node.js/Express.

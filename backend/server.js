@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
 
 dotenv.config();
 
@@ -34,9 +35,87 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Throttling mechanism for Nominatim: max 1 request per second
+let lastNominatimRequest = 0;
+const NOMINATIM_THROTTLE_MS = 1000;
+
+// Cache for geocoding results
+const geocodeCache = new Map();
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+/**
+ * Geocoding endpoint - proxy to Nominatim with throttling and caching
+ * GET /api/geocode?q={location}
+ */
+app.get('/api/geocode', async (req, res) => {
+  const { q: query } = req.query;
+
+  if (!query) {
+    return res.status(400).json({ error: 'Query parameter "q" is required' });
+  }
+
+  // Check cache first
+  const cacheKey = query.toLowerCase();
+  if (geocodeCache.has(cacheKey)) {
+    console.log(`📍 Cache hit for: ${query}`);
+    return res.json(geocodeCache.get(cacheKey));
+  }
+
+  // Throttle requests to Nominatim (1 req/sec max)
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastNominatimRequest;
+  if (timeSinceLastRequest < NOMINATIM_THROTTLE_MS) {
+    const waitTime = NOMINATIM_THROTTLE_MS - timeSinceLastRequest;
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+
+  try {
+    lastNominatimRequest = Date.now();
+
+    // Make request to Nominatim
+    const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+    const response = await fetch(nominatimUrl, {
+      headers: {
+        'User-Agent': 'AIrChat/1.0 (hackathon-project)',
+        'Accept-Language': 'en'
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        return res.status(429).json({ error: 'Too many requests. Please wait a moment.' });
+      }
+      throw new Error(`Nominatim API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: 'Location not found. Try a different search.' });
+    }
+
+    // Extract first result
+    const location = data[0];
+    const result = {
+      lat: parseFloat(location.lat),
+      lon: parseFloat(location.lon),
+      display_name: location.display_name
+    };
+
+    // Cache the result
+    geocodeCache.set(cacheKey, result);
+
+    console.log(`📍 Geocoded: ${query} -> ${result.display_name}`);
+    res.json(result);
+
+  } catch (error) {
+    console.error('Geocoding error:', error);
+    res.status(500).json({ error: 'Unable to geocode location. Please try again.' });
+  }
 });
 
 /**
@@ -167,8 +246,11 @@ app.use('*', (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`AIrChat backend server running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`🚀 AIrChat Unified Backend running on port ${PORT}`);
+  console.log(`   Health: http://localhost:${PORT}/api/health`);
+  console.log(`   Chat: http://localhost:${PORT}/api/chat`);
+  console.log(`   Chat Stream: http://localhost:${PORT}/api/chat/stream`);
+  console.log(`   Geocoding: http://localhost:${PORT}/api/geocode?q=San%20Jose`);
 });
 
 export default app;
