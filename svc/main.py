@@ -29,6 +29,15 @@ except ImportError:
     ENHANCED_MODE = False
     print("Running in basic mode (enhanced modules not found)")
 
+# Import AI agent
+try:
+    from ai_agent import chat_with_agent, get_agent
+    AI_MODE = True
+    print("AI mode enabled - LangChain integration available")
+except ImportError:
+    AI_MODE = False
+    print("AI mode disabled - LangChain modules not found")
+
 # Load environment variables
 load_dotenv()
 
@@ -265,6 +274,103 @@ async def get_latest_air_quality(
     except Exception as e:
         print(f"Error in get_latest_air_quality: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+
+
+@app.post("/v1/chat")
+async def chat_endpoint(request: Dict[str, Any]):
+    """
+    AI Chat endpoint with LangChain integration
+    """
+    if not AI_MODE:
+        raise HTTPException(
+            status_code=503, 
+            detail="AI mode is disabled. LangChain modules not available."
+        )
+    
+    try:
+        message = request.get("message", "")
+        session_id = request.get("conversationId", "default")
+        llm_provider = request.get("llm_provider", None)
+        
+        if not message:
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        if len(message) > 10000:
+            raise HTTPException(status_code=400, detail="Message too long (max 10,000 characters)")
+        
+        # Get AI response
+        response = await chat_with_agent(message, session_id, llm_provider)
+        
+        return {
+            "id": str(int(datetime.utcnow().timestamp() * 1000)),
+            "message": response,
+            "conversationId": session_id,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "type": "assistant",
+            "ai_mode": True,
+            "llm_provider": llm_provider or os.getenv("LLM_PROVIDER", "google")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in chat endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing chat request: {str(e)}")
+
+
+@app.get("/v1/chat/stream")
+async def chat_stream_endpoint(
+    message: str = Query(..., description="Chat message"),
+    conversationId: str = Query("default", description="Conversation ID"),
+    llm_provider: str = Query(None, description="LLM provider (openai/google)")
+):
+    """
+    AI Chat streaming endpoint with LangChain integration
+    """
+    if not AI_MODE:
+        raise HTTPException(
+            status_code=503, 
+            detail="AI mode is disabled. LangChain modules not available."
+        )
+    
+    try:
+        if len(message) > 10000:
+            raise HTTPException(status_code=400, detail="Message too long (max 10,000 characters)")
+        
+        # Get AI response
+        response = await chat_with_agent(message, conversationId, llm_provider)
+        
+        # For now, return the full response as a single chunk
+        # In a more advanced implementation, you could stream the response word by word
+        return {
+            "type": "chunk",
+            "content": response,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "conversationId": conversationId,
+            "ai_mode": True,
+            "llm_provider": llm_provider or os.getenv("LLM_PROVIDER", "google")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in chat stream endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing chat stream request: {str(e)}")
+
+
+@app.get("/v1/ai/status")
+async def ai_status():
+    """
+    Get AI service status and configuration
+    """
+    return {
+        "ai_mode": AI_MODE,
+        "llm_provider": os.getenv("LLM_PROVIDER", "google"),
+        "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "google_configured": bool(os.getenv("GOOGLE_API_KEY")),
+        "enhanced_mode": ENHANCED_MODE,
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    }
 
 
 if __name__ == "__main__":
