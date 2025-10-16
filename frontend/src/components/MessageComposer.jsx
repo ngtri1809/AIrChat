@@ -14,7 +14,8 @@ import { useChat } from '../contexts/ChatContext';
 function MessageComposer({ conversationId, onError, onFocus, onBlur, disabled }) {
   const { 
     createConversation, 
-    addMessage, 
+    addMessage,
+    updateMessage,
     setLoading, 
     setStreaming, 
     abortStream,
@@ -73,25 +74,41 @@ function MessageComposer({ conversationId, onError, onFocus, onBlur, disabled })
   };
 
   /**
+   * Get or create session ID from localStorage
+   * @returns {string} Session ID
+   */
+  const getSessionId = () => {
+    let sessionId = localStorage.getItem('airchat-session-id');
+    if (!sessionId) {
+      sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      localStorage.setItem('airchat-session-id', sessionId);
+    }
+    return sessionId;
+  };
+
+  /**
    * Send message via regular API
    * @param {string} messageText - Message to send
    * @param {string} convId - Conversation ID
    */
   const sendRegularMessage = async (messageText, convId) => {
     try {
-      const response = await fetch('/api/chat', {
+      const sessionId = getSessionId();
+      
+      const response = await fetch('http://localhost:3005/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           message: messageText,
-          conversationId: convId
+          sessionId: sessionId
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
@@ -101,11 +118,22 @@ function MessageComposer({ conversationId, onError, onFocus, onBlur, disabled })
         id: data.id,
         content: data.message,
         type: 'assistant',
-        timestamp: data.timestamp
+        timestamp: data.timestamp,
+        ai_mode: data.ai_mode,
+        llm_provider: data.llm_provider
       });
     } catch (error) {
       console.error('Error sending message:', error);
-      onError('Failed to send message. Please try again.');
+      const errorMessage = error.message || 'Failed to send message. Please try again.';
+      onError(errorMessage);
+      
+      // Add error message to chat
+      addMessage(convId, {
+        id: Date.now().toString(),
+        content: `❌ Error: ${errorMessage}`,
+        type: 'system',
+        timestamp: new Date().toISOString()
+      });
     }
   };
 
@@ -121,7 +149,9 @@ function MessageComposer({ conversationId, onError, onFocus, onBlur, disabled })
     try {
       setStreaming(true, controller);
       
-      const response = await fetch(`/api/chat/stream?message=${encodeURIComponent(messageText)}&conversationId=${convId}`, {
+      const sessionId = getSessionId();
+      
+      const response = await fetch(`http://localhost:3005/api/chat/stream?message=${encodeURIComponent(messageText)}&sessionId=${sessionId}`, {
         signal: controller.signal,
         headers: {
           'Accept': 'text/event-stream',
@@ -130,7 +160,8 @@ function MessageComposer({ conversationId, onError, onFocus, onBlur, disabled })
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP error! status: ${response.status}`);
       }
 
       const reader = response.body.getReader();
@@ -162,21 +193,15 @@ function MessageComposer({ conversationId, onError, onFocus, onBlur, disabled })
               
               if (data.type === 'chunk') {
                 assistantContent += data.content;
-                // Update the message with new content
-                addMessage(convId, {
-                  id: assistantMessageId,
+                // Update the existing message with new content (not add new message!)
+                updateMessage(convId, assistantMessageId, {
                   content: assistantContent,
-                  type: 'assistant',
-                  timestamp: new Date().toISOString(),
                   isStreaming: true
                 });
               } else if (data.type === 'done') {
                 // Finalize the message
-                addMessage(convId, {
-                  id: assistantMessageId,
+                updateMessage(convId, assistantMessageId, {
                   content: assistantContent,
-                  type: 'assistant',
-                  timestamp: new Date().toISOString(),
                   isStreaming: false
                 });
               }
@@ -223,8 +248,8 @@ function MessageComposer({ conversationId, onError, onFocus, onBlur, disabled })
         timestamp: new Date().toISOString()
       });
 
-      // Send to backend (use streaming by default)
-      await sendStreamingMessage(messageText, convId);
+      // Send to backend (use regular message for stability)
+      await sendRegularMessage(messageText, convId);
       
     } catch (error) {
       console.error('Error sending message:', error);

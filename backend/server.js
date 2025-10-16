@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
+import { sessionManager } from './session_manager.js';
 
 dotenv.config();
 
@@ -44,7 +45,16 @@ const geocodeCache = new Map();
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    sessions: sessionManager.getStats()
+  });
+});
+
+// Session stats endpoint
+app.get('/api/sessions/stats', (req, res) => {
+  res.json(sessionManager.getStats());
 });
 
 /**
@@ -119,13 +129,13 @@ app.get('/api/geocode', async (req, res) => {
 });
 
 /**
- * Mock chat endpoint for non-streaming responses
+ * AI Chat endpoint - Proxy to Python AI service
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-app.post('/api/chat', (req, res) => {
+app.post('/api/chat', async (req, res) => {
   try {
-    const { message, conversationId } = req.body;
+    const { message, conversationId, llm_provider } = req.body;
     
     // Input validation
     if (!message || typeof message !== 'string') {
@@ -139,30 +149,83 @@ app.post('/api/chat', (req, res) => {
     // Sanitize input (basic XSS prevention)
     const sanitizedMessage = message.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
     
-    // Mock response
-    const mockResponse = `I received your message: "${sanitizedMessage}". This is a mock response from AIrChat. In a real implementation, this would be processed by an AI model.`;
+    // Get or create session
+    const session = sessionManager.getOrCreateSession(conversationId);
+    const activeSessionId = session.id;
     
-    res.json({
-      id: Date.now().toString(),
-      message: mockResponse,
-      conversationId: conversationId || null,
-      timestamp: new Date().toISOString(),
-      type: 'assistant'
-    });
+    // Proxy to Python AI service
+    const pythonServiceUrl = process.env.PYTHON_SERVICE_URL || 'http://localhost:8000';
+    
+    try {
+      const response = await fetch(`${pythonServiceUrl}/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: sanitizedMessage,
+          conversationId: activeSessionId,
+          llm_provider: llm_provider || null
+        }),
+        timeout: 60000 // 60 second timeout for AI responses
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Python AI service error:', errorData);
+        
+        if (response.status === 503) {
+          return res.status(503).json({ 
+            error: 'AI service is currently unavailable. Please try again later.',
+            code: 'AI_SERVICE_UNAVAILABLE'
+          });
+        }
+        
+        throw new Error(`AI service returned ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log(`🤖 AI response for conversation ${activeSessionId}`);
+      
+      // Update session
+      sessionManager.updateSession(activeSessionId, {
+        lastMessage: sanitizedMessage,
+        lastResponse: data.message
+      });
+      
+      res.json(data);
+      
+    } catch (fetchError) {
+      console.error('Failed to connect to Python AI service:', fetchError);
+      
+      // Check if service is running
+      if (fetchError.code === 'ECONNREFUSED' || fetchError.code === 'ETIMEDOUT') {
+        return res.status(503).json({ 
+          error: 'AI service is not running. Please start the Python service on port 8000.',
+          code: 'AI_SERVICE_DOWN',
+          hint: 'Run: cd svc && python main.py'
+        });
+      }
+      
+      throw fetchError;
+    }
     
   } catch (error) {
     console.error('Error in /api/chat:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      error: 'Internal server error while processing chat request',
+      code: 'INTERNAL_ERROR'
+    });
   }
 });
 
 /**
- * SSE streaming endpoint for real-time chat responses
+ * AI Chat streaming endpoint - Proxy to Python AI service
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-app.get('/api/chat/stream', (req, res) => {
-  const { message, conversationId } = req.query;
+app.get('/api/chat/stream', async (req, res) => {
+  const { message, conversationId, llm_provider } = req.query;
   
   // Input validation
   if (!message || typeof message !== 'string') {
@@ -175,6 +238,10 @@ app.get('/api/chat/stream', (req, res) => {
   
   // Sanitize input
   const sanitizedMessage = message.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  
+  // Get or create session
+  const session = sessionManager.getOrCreateSession(conversationId);
+  const activeSessionId = session.id;
   
   // Set SSE headers
   res.writeHead(200, {
@@ -189,46 +256,85 @@ app.get('/api/chat/stream', (req, res) => {
   // Send initial connection event
   res.write('data: {"type":"connected","timestamp":"' + new Date().toISOString() + '"}\n\n');
   
-  // Mock streaming response
-  const mockResponse = `I received your message: "${sanitizedMessage}". This is a streaming response from AIrChat. Each word appears as it's generated, simulating real AI model behavior. In production, this would connect to an actual language model API.`;
-  const words = mockResponse.split(' ');
-  let wordIndex = 0;
-  
-  const streamInterval = setInterval(() => {
-    if (wordIndex < words.length) {
-      const chunk = {
-        type: 'chunk',
-        content: words[wordIndex] + (wordIndex < words.length - 1 ? ' ' : ''),
-        timestamp: new Date().toISOString(),
-        conversationId: conversationId || null
-      };
-      
-      res.write('data: ' + JSON.stringify(chunk) + '\n\n');
-      wordIndex++;
-    } else {
-      // Send completion event
-      const completionEvent = {
-        type: 'done',
-        timestamp: new Date().toISOString(),
-        conversationId: conversationId || null
-      };
-      
-      res.write('data: ' + JSON.stringify(completionEvent) + '\n\n');
-      res.end();
-      clearInterval(streamInterval);
+  try {
+    // Proxy to Python AI service
+    const pythonServiceUrl = process.env.PYTHON_SERVICE_URL || 'http://localhost:8000';
+    const url = new URL(`${pythonServiceUrl}/v1/chat/stream`);
+    url.searchParams.set('message', sanitizedMessage);
+    url.searchParams.set('conversationId', activeSessionId);
+    if (llm_provider) {
+      url.searchParams.set('llm_provider', llm_provider);
     }
-  }, 100); // Send a word every 100ms
+    
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      },
+      timeout: 60000
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Python AI service error:', errorData);
+      
+      const errorEvent = {
+        type: 'error',
+        error: 'AI service error',
+        code: response.status === 503 ? 'AI_SERVICE_UNAVAILABLE' : 'AI_SERVICE_ERROR',
+        timestamp: new Date().toISOString()
+      };
+      
+      res.write('data: ' + JSON.stringify(errorEvent) + '\n\n');
+      res.end();
+      return;
+    }
+    
+    // Get response data (Python service returns single chunk for now)
+    const data = await response.json();
+    console.log(`🤖 AI stream response for conversation ${activeSessionId}`);
+    
+    // Update session
+    sessionManager.updateSession(activeSessionId, {
+      lastMessage: sanitizedMessage,
+      lastResponse: data.content
+    });
+    
+    // Forward the response as SSE
+    res.write('data: ' + JSON.stringify(data) + '\n\n');
+    
+    // Send completion event
+    const completionEvent = {
+      type: 'done',
+      timestamp: new Date().toISOString(),
+      conversationId: activeSessionId
+    };
+    res.write('data: ' + JSON.stringify(completionEvent) + '\n\n');
+    res.end();
+    
+  } catch (error) {
+    console.error('Failed to connect to Python AI service:', error);
+    
+    const errorEvent = {
+      type: 'error',
+      error: 'AI service is not available',
+      code: error.code === 'ECONNREFUSED' ? 'AI_SERVICE_DOWN' : 'CONNECTION_ERROR',
+      hint: error.code === 'ECONNREFUSED' ? 'Run: cd svc && python main.py' : undefined,
+      timestamp: new Date().toISOString()
+    };
+    
+    res.write('data: ' + JSON.stringify(errorEvent) + '\n\n');
+    res.end();
+  }
   
   // Handle client disconnect
   req.on('close', () => {
     console.log('Client disconnected from SSE stream');
-    clearInterval(streamInterval);
     res.end();
   });
   
   req.on('error', (error) => {
     console.error('SSE stream error:', error);
-    clearInterval(streamInterval);
     res.end();
   });
 });

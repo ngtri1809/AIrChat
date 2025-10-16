@@ -111,8 +111,19 @@ class AirQualityTool(BaseTool):
     
     def _format_air_quality_response(self, data: Dict[str, Any], location: str) -> str:
         """Format air quality data for LLM consumption"""
+        # Handle new error response format
         if "error" in data:
-            return f"Air quality data unavailable for {location}: {data['error']}"
+            error_type = data.get("error")
+            message = data.get("message", "Air quality data unavailable")
+            suggestions = data.get("suggestions", [])
+            
+            error_response = f"{message}"
+            if suggestions:
+                error_response += "\n\n💡 Suggestions:\n"
+                for suggestion in suggestions:
+                    error_response += f"• {suggestion}\n"
+            
+            return error_response
         
         try:
             aqi = data.get("aqi", {})
@@ -162,10 +173,8 @@ class AIrChatAgent:
     def __init__(self, llm_provider: str = "google"):
         self.llm_provider = llm_provider
         self.llm = self._initialize_llm()
-        self.memory = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True
-        )
+        # Store separate memory for each session
+        self.memories = {}  # session_id -> ConversationBufferMemory
         self.tools = [AirQualityTool()]
         self.agent_executor = self._create_agent()
     
@@ -175,19 +184,28 @@ class AIrChatAgent:
             return ChatGoogleGenerativeAI(
                 model=os.getenv("GOOGLE_MODEL", "gemini-1.5-flash"),
                 google_api_key=os.getenv("GOOGLE_API_KEY"),
-                temperature=0.7
+                temperature=0.2
             )
         elif self.llm_provider == "openai":
             return ChatOpenAI(
                 model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                 api_key=os.getenv("OPENAI_API_KEY"),
-                temperature=0.7
+                temperature=0.2
             )
         else:
             raise ValueError(f"Unsupported LLM provider: {self.llm_provider}")
     
+    def _get_or_create_memory(self, session_id: str) -> ConversationBufferMemory:
+        """Get or create memory for a specific session"""
+        if session_id not in self.memories:
+            self.memories[session_id] = ConversationBufferMemory(
+                memory_key="chat_history",
+                return_messages=True
+            )
+        return self.memories[session_id]
+    
     def _create_agent(self) -> AgentExecutor:
-        """Create the LangChain agent with tools"""
+        """Create the LangChain agent with tools (memory added per session)"""
         
         # System prompt for AIrChat
         system_prompt = """You are AIrChat, a friendly AI assistant specializing in air quality and environmental health. 
@@ -199,14 +217,69 @@ Your capabilities:
 - Give tips for staying safe during poor air quality conditions
 - Answer general questions about environmental health
 
-Guidelines:
-- Always be conversational, helpful, and health-focused
-- When users ask about air quality in a specific location, use the get_air_quality tool
-- Provide clear, actionable health advice based on AQI levels
-- Use emojis and formatting to make responses engaging
-- If you don't know something about air quality, say so rather than guessing
+Response Formatting Guidelines:
+1. Use clear section headers with emojis (🌍 📊 💡 ⚠️ 🏥 🎯)
+2. Format information with bullet points for readability
+3. Use line breaks between sections for better structure
+4. Add relevant emojis to emphasize key points
+5. For explanations, use this structure:
+   - **What it is:** Brief definition
+   - **Why it matters:** Key importance
+   - **Health impacts:** Specific effects
+   - **Sources:** Where it comes from
+   - **What you can do:** Actionable advice
 
-Remember: Your primary goal is to help people understand air quality and stay healthy!"""
+Example response structure for educational questions:
+---
+## 🌬️ [Topic Name]
+
+**What is it?**
+[Clear, concise definition]
+
+**Why it matters:** 
+[Key importance with specific examples]
+
+**Key Points:**
+• Point 1 with context
+• Point 2 with context
+• Point 3 with context
+
+**Health Impacts:** 🏥
+• Impact 1
+• Impact 2
+
+**What you can do:** 💡
+• Actionable tip 1
+• Actionable tip 2
+---
+
+For air quality queries:
+- Present AQI data first with clear visual indicators
+- Follow with health recommendations
+- End with actionable advice
+
+Always be conversational, helpful, and health-focused!"""
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad")
+        ])
+        
+        agent = create_openai_tools_agent(
+            llm=self.llm,
+            tools=self.tools,
+            prompt=prompt
+        )
+        
+        # Return executor WITHOUT memory (we'll add it per-session)
+        return AgentExecutor(
+            agent=agent,
+            tools=self.tools,
+            verbose=True,
+            handle_parsing_errors=True
+        )
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
@@ -232,14 +305,18 @@ Remember: Your primary goal is to help people understand air quality and stay he
     async def chat(self, message: str, session_id: str = "default") -> str:
         """Process a chat message and return AI response"""
         try:
-            # Add session context to memory key
-            memory_key = f"{session_id}_chat_history"
+            # Get session-specific memory
+            memory = self._get_or_create_memory(session_id)
             
-            # Execute agent
+            # Execute agent with session memory
             response = await self.agent_executor.ainvoke({
                 "input": message,
-                "chat_history": self.memory.chat_memory.messages
+                "chat_history": memory.chat_memory.messages
             })
+            
+            # Save to memory
+            memory.chat_memory.add_user_message(message)
+            memory.chat_memory.add_ai_message(response["output"])
             
             return response["output"]
             
@@ -247,9 +324,10 @@ Remember: Your primary goal is to help people understand air quality and stay he
             print(f"Error in AIrChatAgent.chat: {e}")
             return f"I apologize, but I encountered an error processing your message. Please try again. Error: {str(e)}"
     
-    def get_memory_summary(self) -> str:
-        """Get a summary of the conversation memory"""
-        messages = self.memory.chat_memory.messages
+    def get_memory_summary(self, session_id: str = "default") -> str:
+        """Get a summary of the conversation memory for a session"""
+        memory = self._get_or_create_memory(session_id)
+        messages = memory.chat_memory.messages
         if not messages:
             return "No conversation history"
         
