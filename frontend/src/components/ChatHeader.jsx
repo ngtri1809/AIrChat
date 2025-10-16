@@ -66,20 +66,6 @@ function ChatHeader({
 
       {/* Action buttons */}
       <div className="flex items-center space-x-2">
-        {/* Stop streaming button */}
-        {isStreaming && (
-          <button
-            onClick={onStopStreaming}
-            className="flex items-center space-x-1 px-3 py-1.5 text-sm bg-red-100 hover:bg-red-200 dark:bg-red-900 dark:hover:bg-red-800 text-red-700 dark:text-red-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
-            aria-label="Stop generating"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 6h12v12H6z" />
-            </svg>
-            <span>Stop</span>
-          </button>
-        )}
-
         {/* Model info */}
         <div className="hidden sm:flex items-center space-x-1 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 rounded-lg">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -355,7 +355,7 @@ vectorstore = Chroma.from_documents(
     documents=texts,
     embedding=OpenAIEmbeddings(),
     persist_directory="./vectorstore/chroma"
-)
+) 
 
 # Create retrieval tool
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})

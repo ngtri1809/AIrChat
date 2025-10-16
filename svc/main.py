@@ -91,20 +91,31 @@ async def fetch_openaq_data(lat: float, lon: float, radius: int) -> Dict[str, An
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
-async def fetch_location_measurements(location_id: int, hours: int = 12) -> Dict[str, Any]:
-    """Fetch hourly measurements for a specific location"""
+async def fetch_pm25_by_coordinates(lat: float, lon: float, max_distance_km: float = 50) -> Dict[str, Any]:
+    """
+    Fetch latest PM2.5 measurements using /parameters/2/latest endpoint.
+    Filter by proximity to given coordinates since location IDs don't always match.
+    Parameter ID 2 = PM2.5
+    """
     try:
-        async with httpx.AsyncClient(timeout=OPENAQ_TIMEOUT) as client:
-            date_to = datetime.utcnow()
-            date_from = date_to - timedelta(hours=hours)
-            
+        from math import radians, cos, sin, asin, sqrt
+        
+        def haversine(lon1, lat1, lon2, lat2):
+            """Calculate distance between two points in km"""
+            lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+            dlon = lon2 - lon1
+            dlat = lat2 - lat1
+            a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+            c = 2 * asin(sqrt(a))
+            km = 6371 * c
+            return km
+        
+        async with httpx.AsyncClient(timeout=OPENAQ_TIMEOUT * 2) as client:
+            # Fetch latest PM2.5 data globally
             response = await client.get(
-                f"{OPENAQ_BASE_URL}/locations/{location_id}/measurements",
+                f"{OPENAQ_BASE_URL}/parameters/2/latest",
                 params={
-                    "date_from": date_from.isoformat() + "Z",
-                    "date_to": date_to.isoformat() + "Z",
-                    "parameter": "pm25",
-                    "limit": 1000
+                    "limit": 1000  # Get enough data to find nearby sensors
                 },
                 headers={
                     "X-API-Key": OPENAQ_API_KEY,
@@ -113,9 +124,35 @@ async def fetch_location_measurements(location_id: int, hours: int = 12) -> Dict
                 }
             )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            
+            # Filter results by proximity and find closest sensor with valid data
+            results = data.get("results", [])
+            nearby_measurements = []
+            
+            for m in results:
+                coords = m.get("coordinates", {})
+                mlat = coords.get("latitude")
+                mlon = coords.get("longitude")
+                value = m.get("value")
+                
+                if mlat and mlon and value is not None and value >= 0:  # Filter out invalid values
+                    distance = haversine(lon, lat, mlon, mlat)
+                    if distance <= max_distance_km:
+                        nearby_measurements.append({
+                            "parameter": {"name": "pm25"},
+                            "value": value,
+                            "datetime": m.get("datetime"),
+                            "locationsId": m.get("locationsId"),
+                            "distance_km": round(distance, 2)
+                        })
+            
+            # Sort by distance and return closest
+            nearby_measurements.sort(key=lambda x: x["distance_km"])
+            
+            return {"results": nearby_measurements[:5]}  # Return top 5 closest
     except Exception as e:
-        print(f"Error fetching measurements: {e}")
+        print(f"Error fetching PM2.5 by coordinates: {e}")
         return {"results": []}
 
 
@@ -175,46 +212,74 @@ async def get_latest_air_quality(
         
         location_id = best_station.get("id")
         location_name = best_station.get("name", "Unknown")
+        coords = best_station.get("coordinates", {})
+        station_lat = coords.get("latitude")
+        station_lon = coords.get("longitude")
         
-        # Fetch hourly measurements for NowCast
+        # Fetch latest measurements using coordinates-based search
         try:
-            measurements_data = await fetch_location_measurements(location_id, hours=12)
-            measurements = measurements_data.get("results", [])
+            latest_data = await fetch_pm25_by_coordinates(station_lat, station_lon, max_distance_km=20)
+            latest_measurements = latest_data.get("results", [])
             
+            pm25_concentration = None
             pm25_values = []
-            for measurement in measurements:
-                value = measurement.get("value")
-                if value is not None:
-                    pm25_values.append(float(value))
             
-            # Calculate NowCast
-            nowcast_value = None
-            if len(pm25_values) >= 2:
-                nowcast_value = calculate_nowcast_pm25(pm25_values)
+            # Find PM2.5 measurement from latest data
+            for measurement in latest_measurements:
+                param = measurement.get("parameter", {})
+                if param.get("name", "").lower() == "pm25":
+                    value = measurement.get("value")
+                    if value is not None:
+                        pm25_concentration = float(value)
+                        # For NowCast, we'd need historical data, but latest is sufficient for now
+                        pm25_values = [pm25_concentration]
+                        break
             
-            # Use NowCast or latest reading
-            if nowcast_value:
-                pm25_concentration = nowcast_value
-                calculation_method = "EPA NowCast"
-            elif pm25_values:
-                pm25_concentration = pm25_values[-1]
-                calculation_method = "Latest Reading"
+            # If we found PM2.5 data
+            if pm25_concentration is not None:
+                nowcast_value = pm25_concentration  # Use latest as nowcast equivalent
+                calculation_method = "Latest Reading (Real-time)"
             else:
-                # Demo data fallback
-                pm25_concentration = 28.4
-                pm25_values = [25, 27, 30, 28, 26, 29, 31, 27, 26, 28, 30, 29]
-                nowcast_value = calculate_nowcast_pm25(pm25_values)
-                pm25_concentration = nowcast_value
-                calculation_method = "Demo Data"
+                # No real PM2.5 data available - return error response
+                return {
+                    "error": "NO_DATA_AVAILABLE",
+                    "message": f"Sorry, I don't have the current information about the air quality in {location_name}. The monitoring station near this location is not reporting PM2.5 data at this time.",
+                    "station": {
+                        "id": location_id,
+                        "name": location_name,
+                        "location": {
+                            "lat": station_lat,
+                            "lon": station_lon
+                        }
+                    },
+                    "suggestions": [
+                        "Try a different location nearby",
+                        "Check back later when the sensor might be reporting",
+                        "Visit openaq.org for alternative data sources"
+                    ]
+                }
             
         except Exception as e:
-            print(f"Measurements fetch failed: {e}")
-            # Demo data fallback
-            pm25_concentration = 28.4
-            pm25_values = [25, 27, 30, 28, 26, 29, 31, 27, 26, 28, 30, 29]
-            nowcast_value = calculate_nowcast_pm25(pm25_values)
-            pm25_concentration = nowcast_value
-            calculation_method = "Demo Data (API Error)"
+            print(f"Latest measurements fetch failed: {e}")
+            # API error - return error response
+            return {
+                "error": "API_ERROR",
+                "message": f"Sorry, I don't have the current information about the air quality in {location_name}. There was an error fetching data from the monitoring network.",
+                "details": str(e),
+                "station": {
+                    "id": location_id,
+                    "name": location_name,
+                    "location": {
+                        "lat": station_lat,
+                        "lon": station_lon
+                    }
+                },
+                "suggestions": [
+                    "Please try again in a few moments",
+                    "Try a different location",
+                    "Visit openaq.org for alternative data sources"
+                ]
+            }
         
         # Calculate AQI
         pm25_aqi = calculate_aqi_pm25(pm25_concentration)
@@ -241,7 +306,7 @@ async def get_latest_air_quality(
                         "unit": "µg/m³"
                     },
                     "aqi": pm25_aqi["aqi"],
-                    "hourly_values": [round(v, 2) for v in pm25_values[-12:]],
+                    "hourly_values": [round(v, 2) for v in pm25_values[-12:]] if pm25_values else [],
                     "calculation_method": calculation_method
                 }
             },

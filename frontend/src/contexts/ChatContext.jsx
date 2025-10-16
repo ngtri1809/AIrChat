@@ -141,9 +141,12 @@ const ChatContext = createContext();
  */
 export function ChatProvider({ children }) {
   const [state, dispatch] = useReducer(chatReducer, initialState);
+  const [isInitialized, setIsInitialized] = React.useState(false);
 
-  // Load conversations from localStorage on mount
+  // Load conversations from localStorage on mount (ONLY ONCE!)
   useEffect(() => {
+    if (isInitialized) return; // Prevent duplicate loading
+    
     const savedConversations = localStorage.getItem('airchat-conversations');
     if (savedConversations) {
       try {
@@ -158,14 +161,21 @@ export function ChatProvider({ children }) {
         console.error('Failed to load conversations from localStorage:', error);
       }
     }
-  }, []);
+    
+    setIsInitialized(true);
+  }, [isInitialized]);
 
   // Save conversations to localStorage whenever conversations change
   useEffect(() => {
+    if (!isInitialized) return; // Don't save during initial load
+    
     if (state.conversations.length > 0) {
       localStorage.setItem('airchat-conversations', JSON.stringify(state.conversations));
+    } else {
+      // Clear localStorage if no conversations
+      localStorage.removeItem('airchat-conversations');
     }
-  }, [state.conversations]);
+  }, [state.conversations, isInitialized]);
 
   /**
    * Create a new conversation
