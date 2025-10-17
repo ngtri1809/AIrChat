@@ -11,7 +11,7 @@ Day 4 Enhancements:
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 import os
 from dotenv import load_dotenv
@@ -61,9 +61,26 @@ OPENAQ_BASE_URL = "https://api.openaq.org/v3"
 OPENAQ_API_KEY = os.getenv("OPENAQ_API_KEY")
 OPENAQ_TIMEOUT = 10.0
 
+# Check if OpenAQ API key is configured
+if not OPENAQ_API_KEY or OPENAQ_API_KEY == "your_openaq_key_here":
+    print("⚠️  OpenAQ API key not configured - using demo data for air quality")
+    OPENAQ_API_KEY = None
+
 
 async def fetch_openaq_data(lat: float, lon: float, radius: int) -> Dict[str, Any]:
     """Fetch air quality data from OpenAQ API v3"""
+    # If no API key, return demo data
+    if not OPENAQ_API_KEY:
+        return {
+            "results": [{
+                "id": 12345,
+                "name": "Demo Station",
+                "coordinates": {"latitude": lat, "longitude": lon},
+                "parameters": [{"name": "pm25"}],
+                "provider": {"name": "Demo Provider"}
+            }]
+        }
+    
     try:
         async with httpx.AsyncClient(timeout=OPENAQ_TIMEOUT) as client:
             response = await client.get(
@@ -93,9 +110,28 @@ async def fetch_openaq_data(lat: float, lon: float, radius: int) -> Dict[str, An
 
 async def fetch_location_measurements(location_id: int, hours: int = 12) -> Dict[str, Any]:
     """Fetch hourly measurements for a specific location"""
+    # If no API key, return demo measurements
+    if not OPENAQ_API_KEY:
+        return {
+            "results": [
+                {"value": 25.0, "parameter": "pm25"},
+                {"value": 27.0, "parameter": "pm25"},
+                {"value": 30.0, "parameter": "pm25"},
+                {"value": 28.0, "parameter": "pm25"},
+                {"value": 26.0, "parameter": "pm25"},
+                {"value": 29.0, "parameter": "pm25"},
+                {"value": 31.0, "parameter": "pm25"},
+                {"value": 27.0, "parameter": "pm25"},
+                {"value": 26.0, "parameter": "pm25"},
+                {"value": 28.0, "parameter": "pm25"},
+                {"value": 30.0, "parameter": "pm25"},
+                {"value": 29.0, "parameter": "pm25"}
+            ]
+        }
+    
     try:
         async with httpx.AsyncClient(timeout=OPENAQ_TIMEOUT) as client:
-            date_to = datetime.utcnow()
+            date_to = datetime.now(timezone.utc)
             date_from = date_to - timedelta(hours=hours)
             
             response = await client.get(
@@ -221,7 +257,7 @@ async def get_latest_air_quality(
         
         # Build standardized response
         coords = best_station.get("coordinates", {})
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(timezone.utc).isoformat()
         
         response = {
             "aqi": {
@@ -302,10 +338,10 @@ async def chat_endpoint(request: Dict[str, Any]):
         response = await chat_with_agent(message, session_id, llm_provider)
         
         return {
-            "id": str(int(datetime.utcnow().timestamp() * 1000)),
+            "id": str(int(datetime.now(timezone.utc).timestamp() * 1000)),
             "message": response,
             "conversationId": session_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "type": "assistant",
             "ai_mode": True,
             "llm_provider": llm_provider or os.getenv("LLM_PROVIDER", "google")
@@ -345,7 +381,7 @@ async def chat_stream_endpoint(
         return {
             "type": "chunk",
             "content": response,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "conversationId": conversationId,
             "ai_mode": True,
             "llm_provider": llm_provider or os.getenv("LLM_PROVIDER", "google")
