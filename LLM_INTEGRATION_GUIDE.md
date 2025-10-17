@@ -167,3 +167,4 @@ Once the basic integration is working, you can:
 5. **Add more LLM providers** (Claude, local models, etc.)
 
 
+

@@ -22,6 +22,18 @@ venv\Scripts\activate  # On Windows
 pip install -r requirements.txt
 ```
 
+### Environment variables
+Create a `.env` file with:
+
+```env
+# LLM providers (optional)
+GOOGLE_API_KEY=...
+OPENAI_API_KEY=...
+
+# Weather provider
+OPENWEATHER_API_KEY=...
+```
+
 ## Run
 
 ```bash

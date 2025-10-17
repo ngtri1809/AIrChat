@@ -11,6 +11,7 @@ from langchain.memory import ConversationBufferMemory
 from langchain.agents import create_openai_tools_agent, AgentExecutor
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.tools import BaseTool
+from tools import WeatherTool, HealthAdviceTool, LocationTool
 from langchain_core.messages import HumanMessage, AIMessage
 import httpx
 import json
@@ -175,7 +176,12 @@ class AIrChatAgent:
         self.llm = self._initialize_llm()
         # Store separate memory for each session
         self.memories = {}  # session_id -> ConversationBufferMemory
-        self.tools = [AirQualityTool()]
+        self.tools = [
+            AirQualityTool(),
+            LocationTool(),
+            WeatherTool(),
+            HealthAdviceTool(),
+        ]
         self.agent_executor = self._create_agent()
     
     def _initialize_llm(self):
@@ -212,7 +218,9 @@ class AIrChatAgent:
 
 Your capabilities:
 - Answer questions about air quality in any location using the get_air_quality tool
-- Provide health recommendations based on AQI levels
+- Get coordinates from a place name using the get_location tool
+- Fetch current weather using the get_weather tool
+- Provide health recommendations using the get_health_advice tool (given AQI and optional weather)
 - Explain air pollutants (PM2.5, PM10, O3, NO2, SO2, CO)
 - Give tips for staying safe during poor air quality conditions
 - Answer general questions about environmental health
