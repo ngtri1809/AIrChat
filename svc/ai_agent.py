@@ -57,58 +57,129 @@ class AirQualityTool(BaseTool):
     def _geocode_location(self, location: str) -> Optional[Dict[str, float]]:
         """Geocode a location string to lat/lon coordinates"""
         try:
-            async def _geocode():
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    response = await client.get(
-                        "https://nominatim.openstreetmap.org/search",
-                        params={
-                            "q": location,
-                            "format": "json",
-                            "limit": 1
-                        },
-                        headers={
-                            "User-Agent": "AIrChat/1.0 (hackathon-project)"
-                        }
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        if data:
-                            return {
-                                "lat": float(data[0]["lat"]),
-                                "lon": float(data[0]["lon"])
-                            }
-                    return None
-            
             import asyncio
-            return asyncio.run(_geocode())
             
+            # Check if we're already in an event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an event loop, need to use a different approach
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(self._sync_geocode_location, location)
+                    return future.result(timeout=10)
+            except RuntimeError:
+                # No event loop running, safe to use asyncio.run
+                return asyncio.run(self._async_geocode_location(location))
+                
         except Exception as e:
             print(f"Geocoding error: {e}")
+            return None
+
+    def _sync_geocode_location(self, location: str) -> Optional[Dict[str, float]]:
+        """Synchronous geocoding using requests"""
+        try:
+            import requests
+            response = requests.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={
+                    "q": location,
+                    "format": "json",
+                    "limit": 1
+                },
+                headers={
+                    "User-Agent": "AIrChat/1.0 (hackathon-project)"
+                },
+                timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data:
+                    return {
+                        "lat": float(data[0]["lat"]),
+                        "lon": float(data[0]["lon"])
+                    }
+            return None
+        except Exception:
+            return None
+
+    async def _async_geocode_location(self, location: str) -> Optional[Dict[str, float]]:
+        """Asynchronous geocoding using httpx"""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={
+                    "q": location,
+                    "format": "json",
+                    "limit": 1
+                },
+                headers={
+                    "User-Agent": "AIrChat/1.0 (hackathon-project)"
+                }
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data:
+                    return {
+                        "lat": float(data[0]["lat"]),
+                        "lon": float(data[0]["lon"])
+                    }
             return None
     
     def _fetch_air_quality(self, lat: float, lon: float) -> Dict[str, Any]:
         """Fetch air quality data from the local service"""
         try:
-            async def _fetch():
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    response = await client.get(
-                        "http://localhost:8000/v1/aq/latest",
-                        params={
-                            "lat": lat,
-                            "lon": lon,
-                            "radius": 20000
-                        }
-                    )
-                    if response.status_code == 200:
-                        return response.json()
-                    else:
-                        return {"error": f"API returned status {response.status_code}"}
-            
             import asyncio
-            return asyncio.run(_fetch())
             
+            # Check if we're already in an event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an event loop, need to use a different approach
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(self._sync_fetch_air_quality, lat, lon)
+                    return future.result(timeout=10)
+            except RuntimeError:
+                # No event loop running, safe to use asyncio.run
+                return asyncio.run(self._async_fetch_air_quality(lat, lon))
+                
         except Exception as e:
             return {"error": str(e)}
+
+    def _sync_fetch_air_quality(self, lat: float, lon: float) -> Dict[str, Any]:
+        """Synchronous air quality fetching using requests"""
+        try:
+            import requests
+            response = requests.get(
+                "http://localhost:8000/v1/aq/latest",
+                params={
+                    "lat": lat,
+                    "lon": lon,
+                    "radius": 20000
+                },
+                timeout=10
+            )
+            if response.status_code == 200:
+                return response.json()
+            else:
+                return {"error": f"API returned status {response.status_code}"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def _async_fetch_air_quality(self, lat: float, lon: float) -> Dict[str, Any]:
+        """Asynchronous air quality fetching using httpx"""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "http://localhost:8000/v1/aq/latest",
+                params={
+                    "lat": lat,
+                    "lon": lon,
+                    "radius": 20000
+                }
+            )
+            if response.status_code == 200:
+                return response.json()
+            else:
+                return {"error": f"API returned status {response.status_code}"}
     
     def _format_air_quality_response(self, data: Dict[str, Any], location: str) -> str:
         """Format air quality data for LLM consumption"""

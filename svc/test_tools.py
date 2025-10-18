@@ -124,7 +124,13 @@ def test_api_endpoints():
         except Exception as e:
             print(f"❌ Connection error: {e}")
     
-    return asyncio.run(test_aq_endpoint()), asyncio.run(test_chat_endpoint())
+    # Run the async functions
+    try:
+        import asyncio
+        asyncio.run(test_aq_endpoint())
+        asyncio.run(test_chat_endpoint())
+    except Exception as e:
+        print(f"❌ API tests failed (server not running?): {e}")
 
 def check_environment():
     """Check environment configuration"""
