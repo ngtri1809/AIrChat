@@ -3,6 +3,8 @@ import React, { createContext, useContext, useReducer, useCallback, useEffect } 
 // Action types
 const ACTIONS = {
   ADD_CONVERSATION: 'ADD_CONVERSATION',
+  LOAD_CONVERSATIONS: 'LOAD_CONVERSATIONS',
+  LOAD_MESSAGES: 'LOAD_MESSAGES',
   UPDATE_CONVERSATION: 'UPDATE_CONVERSATION',
   DELETE_CONVERSATION: 'DELETE_CONVERSATION',
   SELECT_CONVERSATION: 'SELECT_CONVERSATION',
@@ -34,6 +36,28 @@ const initialState = {
  */
 function chatReducer(state, action) {
   switch (action.type) {
+    case ACTIONS.LOAD_CONVERSATIONS:
+      const conversationsMap = {};
+      action.payload.forEach(conv => {
+        conversationsMap[conv.id] = [];
+      });
+      return {
+        ...state,
+        conversations: action.payload,
+        messages: conversationsMap,
+        // Select the most recent conversation if none is selected
+        selectedConversationId: state.selectedConversationId || (action.payload.length > 0 ? action.payload[0].id : null)
+      };
+
+    case ACTIONS.LOAD_MESSAGES:
+      return {
+        ...state,
+        messages: {
+          ...state.messages,
+          ...action.payload
+        }
+      };
+
     case ACTIONS.ADD_CONVERSATION:
       return {
         ...state,
@@ -148,17 +172,31 @@ export function ChatProvider({ children }) {
     if (isInitialized) return; // Prevent duplicate loading
     
     const savedConversations = localStorage.getItem('airchat-conversations');
+    const savedMessages = localStorage.getItem('airchat-messages');
+    
     if (savedConversations) {
       try {
         const conversations = JSON.parse(savedConversations);
-        conversations.forEach(conv => {
-          dispatch({
-            type: ACTIONS.ADD_CONVERSATION,
-            payload: conv
-          });
+        // Load all conversations at once to prevent duplication
+        dispatch({
+          type: ACTIONS.LOAD_CONVERSATIONS,
+          payload: conversations
         });
       } catch (error) {
         console.error('Failed to load conversations from localStorage:', error);
+      }
+    }
+    
+    if (savedMessages) {
+      try {
+        const messages = JSON.parse(savedMessages);
+        // Load all messages
+        dispatch({
+          type: ACTIONS.LOAD_MESSAGES,
+          payload: messages
+        });
+      } catch (error) {
+        console.error('Failed to load messages from localStorage:', error);
       }
     }
     
@@ -176,6 +214,21 @@ export function ChatProvider({ children }) {
       localStorage.removeItem('airchat-conversations');
     }
   }, [state.conversations, isInitialized]);
+
+  // Save messages to localStorage whenever messages change
+  useEffect(() => {
+    if (!isInitialized) return; // Don't save during initial load
+    
+    // Only save if there are messages
+    const hasMessages = Object.values(state.messages).some(messages => messages.length > 0);
+    
+    if (hasMessages) {
+      localStorage.setItem('airchat-messages', JSON.stringify(state.messages));
+    } else {
+      // Clear localStorage if no messages
+      localStorage.removeItem('airchat-messages');
+    }
+  }, [state.messages, isInitialized]);
 
   /**
    * Create a new conversation

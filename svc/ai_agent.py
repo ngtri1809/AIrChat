@@ -395,7 +395,7 @@ Always be conversational, helpful, and health-focused!"""
             
             # Save to memory
             memory.chat_memory.add_user_message(message)
-            memory.chat_memory.add_ai_message(response["output"])
+            # memory.chat_memory.add_ai_message(response["output"])
             
             return response["output"]
             
