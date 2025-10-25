@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import SmartContentParser from './SmartContentParser';
 
 /**
  * Message bubble component
@@ -49,8 +50,17 @@ function MessageBubble({ message, onCopy, isCopied, showTimestamp }) {
           `}
         >
           {/* Message content */}
-          <div className="whitespace-pre-wrap break-words">
-            {message.content}
+          <div className="break-words">
+            {message.type === 'assistant' ? (
+              <SmartContentParser 
+                content={message.content} 
+                isStreaming={message.isStreaming}
+              />
+            ) : (
+              <div className="whitespace-pre-wrap">
+                {message.content}
+              </div>
+            )}
           </div>
           
           {/* Actions */}

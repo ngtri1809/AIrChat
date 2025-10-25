@@ -351,12 +351,48 @@ app.use('*', (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 AIrChat Unified Backend running on port ${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/api/health`);
   console.log(`   Chat: http://localhost:${PORT}/api/chat`);
   console.log(`   Chat Stream: http://localhost:${PORT}/api/chat/stream`);
   console.log(`   Geocoding: http://localhost:${PORT}/api/geocode?q=San%20Jose`);
+});
+
+// Graceful shutdown handling
+const gracefulShutdown = (signal) => {
+  console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
+  
+  server.close((err) => {
+    if (err) {
+      console.error('Error during server shutdown:', err);
+      process.exit(1);
+    }
+    
+    console.log('✅ Server closed successfully');
+    process.exit(0);
+  });
+  
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('⚠️  Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+// Handle different termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('unhandledRejection');
 });
 
 export default app;
