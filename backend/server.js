@@ -57,6 +57,39 @@ app.get('/api/sessions/stats', (req, res) => {
   res.json(sessionManager.getStats());
 });
 
+// RAG status endpoint - proxy to Python AI service
+app.get('/api/rag/status', async (req, res) => {
+  try {
+    const pythonServiceUrl = process.env.PYTHON_SERVICE_URL || 'http://localhost:8000';
+    
+    const response = await fetch(`${pythonServiceUrl}/v1/rag/status`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      },
+      timeout: 5000 // 5 second timeout
+    });
+    
+    if (!response.ok) {
+      console.error('Python AI service returned error:', response.status);
+      return res.status(503).json({ 
+        status: 'unavailable',
+        rag_available: false
+      });
+    }
+    
+    const data = await response.json();
+    res.json(data);
+    
+  } catch (error) {
+    console.error('Failed to fetch RAG status:', error);
+    res.status(503).json({ 
+      status: 'unavailable',
+      rag_available: false
+    });
+  }
+});
+
 /**
  * Geocoding endpoint - proxy to Nominatim with throttling and caching
  * GET /api/geocode?q={location}

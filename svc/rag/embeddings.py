@@ -88,17 +88,17 @@ def get_openai_embeddings():
 # Default: Google Embeddings
 def get_default_embeddings():
     """
-    Get default embedding model (OpenAI - Cheap paid alternative)
-    Google free tier has strict quotas, so using OpenAI instead
-    Cost: $0.02 per 1M tokens (very affordable)
+    Get default embedding model (Google - FREE tier)
+    Google free tier: 1M embeddings included
+    Perfect for hackathons and demos!
     """
     try:
-        # Use OpenAI as primary (more reliable quota)
-        return get_openai_embeddings()
+        # Use Google as primary (FREE tier)
+        return get_google_embeddings()
     except Exception as e:
-        print(f"⚠️ OpenAI Embeddings failed: {e}")
-        print("⚠️ Falling back to Google Embeddings...")
+        print(f"⚠️ Google Embeddings failed: {e}")
+        print("⚠️ Falling back to OpenAI Embeddings...")
         try:
-            return get_google_embeddings()
+            return get_openai_embeddings()
         except Exception as e2:
             raise Exception(f"Both embedding models failed: {e2}")

@@ -377,6 +377,7 @@ Response Formatting Guidelines:
 3. Use line breaks between sections for better structure
 4. Add relevant emojis to emphasize key points
 5. Include citations [1], [2], [3] when using knowledge base information
+6. ALWAYS include a References section at the end when using knowledge base citations
 6. For explanations, use this structure:
    - What it is: Brief definition
    - Why it matters: Key importance
@@ -396,6 +397,10 @@ Example response structure for air quality queries:
 • Sensitive groups may experience minor breathing discomfort
 • People with heart or lung disease should limit outdoor activities
 • Children and elderly should avoid prolonged outdoor exposure
+
+📚 REFERENCES:
+[1] WHO_global_air_quality_guidelines.pdf (Page 8, WHO)
+[2] technical-assistance-document-for-the-reporting-of-daily-air-quailty.pdf (Page 6, EPA)
 
 💡 RECOMMENDATIONS:
 • Consider wearing a mask if spending extended time outdoors

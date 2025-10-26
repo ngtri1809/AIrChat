@@ -16,7 +16,9 @@ function RAGStatus() {
         const response = await fetch('http://localhost:3005/api/rag/status');
         if (response.ok) {
           const data = await response.json();
-          setRagStatus(data.status || 'ready');
+          // Normalize status to lowercase for matching with statusConfig
+          const normalizedStatus = (data.status || 'ready').toLowerCase();
+          setRagStatus(normalizedStatus);
           setDocumentCount(data.documents_loaded || 0);
         } else {
           setRagStatus('unavailable');
