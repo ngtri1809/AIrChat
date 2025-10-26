@@ -13,7 +13,7 @@ sleep 2
 # Start Backend Service (FastAPI)
 echo "🔬 Starting Backend Service (port 8000)..."
 cd ../svc
-source venv/bin/activate
+source .venv/bin/activate
 uvicorn main:app --reload --port 8000 &
 SVC_PID=$!
 sleep 2

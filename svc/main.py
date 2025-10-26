@@ -1,12 +1,6 @@
 """
 AIrChat Air Quality Service - Enhanced Version
 Integrates OpenAQ API v3 with improved station selection and data formatting
-
-Day 4 Enhancements:
-- Best station selection (PM2.5 > PM10 > O3 > NO2 > SO2 > CO)
-- Standardized data format (ISO 8601 timestamps, µg/m³ units)
-- Multi-pollutant support
-- Better error handling
 """
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,6 +31,15 @@ try:
 except ImportError:
     AI_MODE = False
     print("AI mode disabled - LangChain modules not found")
+
+# Import RAG
+try:
+    from rag import RAGChain
+    RAG_MODE = True
+    print("RAG mode enabled - Knowledge base retrieval available")
+except ImportError:
+    RAG_MODE = False
+    print("RAG mode disabled - RAG modules not found")
 
 # Load environment variables
 load_dotenv()
@@ -436,6 +439,40 @@ async def ai_status():
         "enhanced_mode": ENHANCED_MODE,
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
+
+
+@app.get("/v1/rag/status")
+async def rag_status():
+    """
+    Get RAG (Retrieval-Augmented Generation) status
+    """
+    if not RAG_MODE:
+        return {
+            "status": "unavailable",
+            "rag_available": False,
+            "documents_loaded": 0,
+            "message": "RAG modules not installed"
+        }
+    
+    try:
+        # Initialize RAG and get stats
+        rag_chain = RAGChain()
+        stats = rag_chain.retriever.get_stats()
+        
+        return {
+            "status": stats.get("status", "unknown"),
+            "rag_available": True,
+            "documents_loaded": stats.get("documents_loaded", 0),
+            "score_threshold": stats.get("score_threshold", 0.12),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "rag_available": False,
+            "documents_loaded": 0,
+            "error": str(e)
+        }
 
 
 if __name__ == "__main__":

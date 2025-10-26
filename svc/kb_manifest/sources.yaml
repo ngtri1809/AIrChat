@@ -1,0 +1,35 @@
+- id: epa_aqi_pm_guide
+  path: svc/data/kb/epa/air-quality-guide-for-particle-pollution_0.pdf
+  title: Air Quality Guide for Particle Pollution
+  org: EPA/AirNow
+  year: 2023
+  locale: en
+  domain: air_quality
+  priority: 1
+
+- id: epa_aqi_tad_2018
+  path: svc/data/kb/epa/aqi-technical-assistance-document-sept2018.pdf
+  title: AQI Technical Assistance Document (2018)
+  org: EPA
+  year: 2018
+  locale: en
+  domain: air_quality
+  priority: 1
+
+- id: epa_aqi_tad_2024
+  path: svc/data/kb/epa/technical-assistance-document-for-the-reporting-of-daily-air-quailty.pdf
+  title: Technical Assistance Document for Reporting Daily AQI (2024)
+  org: EPA
+  year: 2024
+  locale: en
+  domain: air_quality
+  priority: 1
+
+- id: who_aqg_2021_exec
+  path: svc/data/kb/who/WHO_global_air_quality_guidelines.pdf
+  title: WHO Global Air Quality Guidelines (Exec Summary, 2021)
+  org: WHO
+  year: 2021
+  locale: en
+  domain: air_quality
+  priority: 2

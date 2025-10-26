@@ -68,3 +68,8 @@ Thumbs.db
 *~
 *.tmp
 *.bak
+
+# --- Specific ignores ---
+# markdown notes
+AI_AGENT_TEST_RESULTS.md
+AI_ORCHESTRATOR_PLAN.md

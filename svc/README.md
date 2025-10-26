@@ -11,10 +11,10 @@ FastAPI service for air quality data processing:
 
 ### Create virtual environment
 ```bash
-python3 -m venv venv
-source venv/bin/activate  # On macOS/Linux
+python3 -m venv .venv
+source .venv/bin/activate  # On macOS/Linux
 # or
-venv\Scripts\activate  # On Windows
+.venv\Scripts\activate  # On Windows
 ```
 
 ### Install dependencies

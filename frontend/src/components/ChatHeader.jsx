@@ -1,5 +1,6 @@
 import React from 'react';
 import { useChat } from '../contexts/ChatContext';
+import RAGStatus from './RAGStatus';
 
 /**
  * Chat header component
@@ -65,7 +66,10 @@ function ChatHeader({
       </div>
 
       {/* Action buttons */}
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-3">
+        {/* RAG Status */}
+        <RAGStatus />
+
         {/* Model info */}
         <div className="hidden sm:flex items-center space-x-1 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 rounded-lg">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,0 +1,13 @@
+chunk_size: 800
+chunk_overlap: 120
+retriever:
+  type: mmr
+  k: 6
+  fetch_k: 30
+  lambda_mult: 0.5
+filters:
+  domain: ["air_quality"]
+  locale: ["en","vi"]
+source_priority: ["epa","who"]
+score_threshold: 0.12
+max_sources: 5

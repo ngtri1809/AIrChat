@@ -1,6 +1,6 @@
 """
 AIrChat AI Agent with LangChain Integration
-Provides intelligent chat responses with air quality tool integration
+Provides intelligent chat responses with air quality tool integration and RAG support
 """
 import os
 from typing import Dict, Any, Optional
@@ -18,6 +18,14 @@ import json
 
 # Load environment variables
 load_dotenv()
+
+# Import RAG components
+try:
+    from rag import RAGChain
+    RAG_AVAILABLE = True
+except ImportError:
+    RAG_AVAILABLE = False
+    print("⚠️ RAG not available - install RAG dependencies for enhanced responses")
 
 class AirQualityTool(BaseTool):
     """LangChain tool for fetching air quality data"""
@@ -239,6 +247,60 @@ class AirQualityTool(BaseTool):
         except Exception as e:
             return f"Error formatting air quality data: {str(e)}"
 
+
+class RAGTool(BaseTool):
+    """LangChain tool for RAG-based knowledge retrieval about air quality"""
+    
+    name: str = "search_knowledge_base"
+    description: str = (
+        "Search the air quality knowledge base (EPA & WHO guidelines) for detailed information. "
+        "Use this for questions about air quality standards, health impacts, regulations, or guidelines. "
+        "Input should be a natural language question or topic."
+    )
+    rag_chain: Optional[Any] = None  # Will be set after initialization
+    
+    class Config:
+        arbitrary_types_allowed = True
+    
+    def _run(self, query: str) -> str:
+        """Execute the RAG tool"""
+        if self.rag_chain is None:
+            try:
+                self.rag_chain = RAGChain()
+            except Exception as e:
+                return f"Knowledge base not available: {str(e)}"
+        
+        try:
+            # Get RAG results
+            result = self.rag_chain.invoke(query, k=3)
+            
+            # Format results for LLM consumption
+            formatted_response = f"📚 Knowledge Base Results for: {query}\n\n"
+            
+            if result["documents"]:
+                formatted_response += "Found relevant information:\n\n"
+                
+                for i, doc in enumerate(result["documents"], 1):
+                    similarity = doc["similarity"]
+                    source = doc["metadata"].get("source", "Unknown")
+                    page = doc["metadata"].get("page", "N/A")
+                    domain = doc["metadata"].get("domain", "Unknown").upper()
+                    
+                    formatted_response += f"[{i}] {source} (Page {page}, {domain})\n"
+                    formatted_response += f"    Relevance: {similarity:.0%}\n"
+                    formatted_response += f"    {doc['content'][:200]}...\n\n"
+                
+                formatted_response += f"\n💡 Use this information to provide detailed, evidence-based answers.\n"
+                formatted_response += f"Include citations like [1], [2], [3] when using this information."
+            else:
+                formatted_response += "No relevant documents found in knowledge base."
+            
+            return formatted_response
+            
+        except Exception as e:
+            return f"Error searching knowledge base: {str(e)}"
+
+
 class AIrChatAgent:
     """Main AI agent for AIrChat with LangChain integration"""
     
@@ -253,6 +315,10 @@ class AIrChatAgent:
             WeatherTool(),
             HealthAdviceTool(),
         ]
+        # Add RAG tool if available
+        if RAG_AVAILABLE:
+            self.tools.append(RAGTool())
+        
         self.agent_executor = self._create_agent()
     
     def _initialize_llm(self):
@@ -292,24 +358,35 @@ Your capabilities:
 - Get coordinates from a place name using the get_location tool
 - Fetch current weather using the get_weather tool
 - Provide health recommendations using the get_health_advice tool (given AQI and optional weather)
+- Search EPA & WHO guidelines using the search_knowledge_base tool for detailed information
 - Explain air pollutants (PM2.5, PM10, O3, NO2, SO2, CO)
 - Give tips for staying safe during poor air quality conditions
-- Answer general questions about environmental health
+- Answer general questions about environmental health with evidence-based information
+
+When to use search_knowledge_base (RAG):
+- Questions about air quality standards or regulations
+- Health impacts and WHO guidelines
+- EPA recommendations and air quality metrics
+- Detailed scientific explanations about pollutants
+- Historical information or specific studies
+- Best practices for air quality monitoring
 
 Response Formatting Guidelines:
-1. Use clear section headers with emojis (🌍 📊 💡 ⚠️ 🏥 🎯)
+1. Use clear section headers with emojis (🌍 📊 💡 ⚠️ 🏥 🎯 📚)
 2. Format information with bullet points for readability
 3. Use line breaks between sections for better structure
 4. Add relevant emojis to emphasize key points
-5. For explanations, use this structure:
+5. Include citations [1], [2], [3] when using knowledge base information
+6. For explanations, use this structure:
    - What it is: Brief definition
    - Why it matters: Key importance
    - Health impacts: Specific effects
    - Sources: Where it comes from
    - What you can do: Actionable advice
+7. Always be conversational, helpful, and health-focused! Remember, no display any symbols for markdown file.
+8. no symbol like this in the response: **
 
 Example response structure for air quality queries:
----
 📍 LOCATION: Ho Chi Minh City, Vietnam
 📊 AQI: 85 - Moderate (🟡 Yellow)
 🌬️ PM2.5: 28.5 μg/m³
@@ -326,10 +403,8 @@ Example response structure for air quality queries:
 • Limit outdoor exercise, especially for sensitive groups
 
 📈 TREND: Stable (no significant change in past 24 hours)
----
 
 Example response structure for educational questions:
----
 🌬️ Topic Name
 
 What is it?
@@ -350,7 +425,6 @@ Health Impacts: 🏥
 What you can do: 💡
 • Actionable tip 1
 • Actionable tip 2
----
 
 For air quality queries, always:
 - Present AQI data first with clear visual indicators

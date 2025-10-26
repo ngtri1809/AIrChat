@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import SmartContentParser from './SmartContentParser';
+import CitationBubble from './CitationBubble';
 
 /**
  * Message bubble component
@@ -93,6 +94,13 @@ function MessageBubble({ message, onCopy, isCopied, showTimestamp }) {
         {showTimestamp && (
           <div className={`text-xs text-gray-500 dark:text-gray-400 mt-1 ${message.type === 'user' ? 'text-right' : 'text-left'}`}>
             {formatTimestamp(message.timestamp)}
+          </div>
+        )}
+
+        {/* Citations (if available) */}
+        {message.type === 'assistant' && message.citations && message.citations.length > 0 && (
+          <div className="mt-2">
+            <CitationBubble citations={message.citations} messageId={message.id} />
           </div>
         )}
       </div>
