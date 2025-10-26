@@ -7,6 +7,7 @@ A production-ready conversational AI application combining real-time air quality
 **Demo Date:** October 25, 2025 ✅ **COMPLETE**
 
 **Demo Video:** [📺 Watch on YouTube](https://www.youtube.com/watch?v=5zbxqMgl2TQ)
+**Presentation**: https://docs.google.com/presentation/d/1jMslCeHJ5zp_f2t-EBpZjMm6QB1-E_yEe9zszZsvDVs/edit?usp=sharing
 
 ## 🎯 Project Status
 
